@@ -1,0 +1,67 @@
+// [Manuel Eklenen] Prisma Veritabani Semasi
+// Neden Yaptik: Next.js projelerinde veritabani islemlerini ORM gucuyle (Prisma) cozecegiz, bu sebeple modelleri en verimli formatlarda simdiden planladik.
+// Gelecek Plani: Paketler yuklenip veritabani SQLite'ta fiziksel olarak ayağa kalktiginda (prisma migrate dev) tablolar bu yapita bagli olusacak. Zama icinde User (kullanici kimlik) modeli de buraya dahil olacak.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+datasource db {
+  provider = "sqlite"
+}
+
+model DemoUser {
+  id        String   @id
+  aiQuota   Int      @default(5)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tasks     Task[]
+  notes     Note[]
+  events    Event[]
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  demoUserId  String?
+  title       String
+  description String?
+  category    String   @default("Genel")
+  priority    String   @default("normal") 
+  status      String   @default("pending") 
+  dueDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  demoUser    DemoUser? @relation(fields: [demoUserId], references: [id], onDelete: Cascade)
+
+  @@index([demoUserId])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  demoUserId String?
+  title     String
+  content   String
+  category  String   @default("Genel")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  demoUser  DemoUser? @relation(fields: [demoUserId], references: [id], onDelete: Cascade)
+
+  @@index([demoUserId])
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  demoUserId  String?
+  title       String
+  description String?
+  location    String?
+  startDate   DateTime
+  endDate     DateTime?
+  category    String   @default("Genel")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  demoUser    DemoUser? @relation(fields: [demoUserId], references: [id], onDelete: Cascade)
+
+  @@index([demoUserId])
+}
