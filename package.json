@@ -8,6 +8,7 @@
     "start": "next start",
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
+    "db:push:prod": "node scripts/db-push-prod.mjs",
     "prisma:generate": "prisma generate"
   },
   "dependencies": {

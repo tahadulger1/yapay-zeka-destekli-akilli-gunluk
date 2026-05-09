@@ -1,16 +1,25 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 
-const defaultExport = globalThis;
+const globalForPrisma = globalThis;
+const databaseUrl = process.env.DATABASE_URL || "file:./dev.db";
+const isRemoteLibSql = databaseUrl.startsWith("libsql://");
+
+function createPrismaClient() {
+  if (isRemoteLibSql && !process.env.LIBSQL_AUTH_TOKEN) {
+    throw new Error("LIBSQL_AUTH_TOKEN is required when DATABASE_URL uses libsql://");
+  }
+
+  return new PrismaClient({
+    adapter: new PrismaLibSql({
+      url: databaseUrl,
+      authToken: isRemoteLibSql ? process.env.LIBSQL_AUTH_TOKEN : undefined,
+    }),
+  });
+}
 
 /** @type {import('@prisma/client').PrismaClient} */
 export const prisma =
-  defaultExport.prisma ||
-  new PrismaClient({
-    adapter: new PrismaLibSql({
-      url: process.env.DATABASE_URL || "file:./dev.db",
-      authToken: process.env.LIBSQL_AUTH_TOKEN,
-    }),
-  });
+  globalForPrisma.prisma || createPrismaClient();
 
-if (process.env.NODE_ENV !== "production") defaultExport.prisma = prisma;
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;

@@ -18,7 +18,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Environment
 
-Copy `.env.example` to `.env` locally and set these variables in production:
+Copy `.env.example` to `.env` locally. Set these variables in Vercel production:
 
 - `DATABASE_URL`
 - `LIBSQL_AUTH_TOKEN` when using a remote libSQL/Turso database
@@ -26,7 +26,26 @@ Copy `.env.example` to `.env` locally and set these variables in production:
 - `GEMINI_MODEL` optional, defaults to `gemini-flash-latest`
 - `NEXT_PUBLIC_APP_API_SECRET`
 
+Local-only helpers:
+
+- `LOCAL_DATABASE_URL` optional, defaults to `file:./dev.db` for Prisma CLI commands
+- `TURSO_DATABASE_NAME` when applying generated SQL with the Turso CLI
+
 For production, use a persistent database such as Turso/libSQL instead of the local `file:./dev.db` SQLite file.
+
+## Database setup
+
+Local Prisma CLI commands use `LOCAL_DATABASE_URL` or `file:./dev.db`, even when production `DATABASE_URL` is a `libsql://` Turso URL. This keeps `npm run db:push` working for local development.
+
+Prisma CLI does not directly push SQLite schema changes to remote Turso/libSQL over `libsql://`. For a new Turso database, set production credentials in the current terminal session and run:
+
+```bash
+npm run db:push:prod
+```
+
+`db:push:prod` reads `DATABASE_URL` and `LIBSQL_AUTH_TOKEN` from the current shell environment. It does not read the local `.env` file.
+
+For future schema changes on a non-empty production database, generate/apply migrations deliberately instead of pointing `prisma db push` at the production `libsql://` URL.
 
 ## QR Demo Mode
 
@@ -43,7 +62,7 @@ npm run build
 npm run start
 ```
 
-Run `npm run db:push` against the production database before the first deploy if its schema has not been created yet.
+Before the first Turso deploy, apply the generated SQL from the Database setup section if the production schema has not been created yet.
 
 You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
 
