@@ -84,6 +84,20 @@ export async function POST(request) {
       );
     }
 
+    if (result.requiresClarification || (result.type === "event" && !result.startDate)) {
+      return NextResponse.json({
+        message: "Tarih/saat bilgisi netlestirilmeli",
+        result: {
+          ...result,
+          requiresClarification: true,
+          missingFields: result.missingFields?.length ? result.missingFields : ["date"],
+          clarification: result.clarification || "Lutfen tarih ve saat bilgisini netlestirin.",
+        },
+        savedRecord: null,
+        demoUser: { id: demoUser.id, aiQuota: demoUser.aiQuota },
+      });
+    }
+
     const transactionResult = await prisma.$transaction(async (tx) => {
       const quotaUpdate = await tx.demoUser.updateMany({
         where: {

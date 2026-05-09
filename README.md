@@ -51,7 +51,7 @@ For future schema changes on a non-empty production database, generate/apply mig
 
 The public poster/QR demo does not use real authentication. Each browser creates a local `demoUserId` in `localStorage` and sends it with API requests as `x-demo-user-id`.
 
-This is only lightweight demo isolation: visitors see only the Task, Note, and Event records tied to their demo id, and each demo user starts with 5 AI requests. The header can be spoofed, so this should not be treated as login, authorization, or data security for production users.
+This is only lightweight demo isolation: visitors see only the Task, Note, and Event records tied to their demo id, and each demo user starts with 3 AI requests. The header can be spoofed, so this should not be treated as login, authorization, or data security for production users.
 
 ## Deploy Checklist
 

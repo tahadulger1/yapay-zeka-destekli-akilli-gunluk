@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export const DEMO_USER_HEADER = "x-demo-user-id";
+export const DEMO_AI_QUOTA = 3;
 export const DEMO_QUOTA_EXHAUSTED_MESSAGE = "Demo sorgu hakkınız doldu";
 
 function normalizeDemoUserId(value) {
@@ -25,7 +26,7 @@ export async function getOrCreateDemoUser(request, client = prisma) {
   return client.demoUser.upsert({
     where: { id: demoUserId },
     update: {},
-    create: { id: demoUserId },
+    create: { id: demoUserId, aiQuota: DEMO_AI_QUOTA },
   });
 }
 

@@ -2,22 +2,18 @@
 // Neden Yaptik: Projede tarih pars etmek, string operasyonlari yapmak, renkleri yonetmek gibi isler icin tekerrur (DRY kurali) olmamasi amaciyla bir utilities dosyasi sunduk.
 // Gelecek Plani: Date fns gibi yardimci paketlerin fonksiyonlariyla genisleyebilir, AI'den gelen string tarihleri JavaScript Date objelerine eviren parser metodlar eklenebilir.
 
+import { formatTurkeyDate, formatTurkeyDateTime, formatTurkeyTime } from "./turkey-date";
+
 export function formatDate(date) {
-    return new Date(date).toLocaleDateString("tr-TR", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-    });
+    return formatTurkeyDate(date);
 }
 
 export function formatDateTime(date) {
-    return new Date(date).toLocaleString("tr-TR", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-    });
+    return formatTurkeyDateTime(date);
+}
+
+export function formatTime(date) {
+    return formatTurkeyTime(date);
 }
 
 export function getPriorityLabel(priority) {

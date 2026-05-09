@@ -1,4 +1,12 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import {
+    TURKEY_OFFSET,
+    TURKEY_TIME_ZONE,
+    getTurkeyDateContext,
+    normalizeTurkeyIsoDate,
+    normalizeTurkishText,
+    resolveTurkishDateTime,
+} from "./turkey-date.js";
 
 const apiKey = process.env.GEMINI_API_KEY;
 const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
@@ -25,7 +33,7 @@ class PromptTemplate {
     }
 }
 
-const PARSE_INSTRUCTION_TEMPLATE = new PromptTemplate(
+const OLD_PARSE_INSTRUCTION_TEMPLATE = new PromptTemplate(
     `Sen, Türkçe bilen akıllı bir görev ve zaman yönetimi asistanısın. 
 Kullanıcının zaman dilimi: {timezone}.
 Referans tarihi ve saati: {currentDate}. Bu zaman bilgisini baz alarak kullanıcı metnindeki 'yarın', 'haftaya', 'öğleden sonra' gibi göreceli zaman ifadelerini kesin ISO 8601 tarihlerine dönüştür.
@@ -53,6 +61,53 @@ SADECE "application/json" formatında yanıt ver. Extradan markdown (\`\`\`json 
   "startDate": "ISO 8601 formatında tarih veya null (Sadece 'event' ise. 'task' ve 'note' tiplerinde null olmalıdır)"
 }`,
     ["currentDate", "timezone"]
+);
+
+const PARSE_INSTRUCTION_TEMPLATE = new PromptTemplate(
+    `Sen, Turkce bilen akilli bir gorev ve zaman yonetimi asistanisin.
+Sistem Turkiye'de kullanilacak.
+IANA timezone: {timezoneName}.
+Timezone offset: {timezoneOffset}.
+Bugunun tarihi: {todayDate}.
+Bugunun gun adi: {todayWeekday}.
+Referans tarih/saat: {currentDate}.
+
+Tum tarih/saat hesaplarini Europe/Istanbul'a gore yap. Sunucu veya kullanici cihazinin yerel timezone'una gore hesap yapma.
+
+TARIH/SAAT KURALLARI:
+1. "bugun" = Bugunun tarihi.
+2. "yarin" = Bugunden sonraki gun.
+3. "bu aksam" = Bugun saat 19:00.
+4. "bu gece" = Bugun saat 22:00.
+5. "haftaya" = Referans tarihten 7 gun sonrasi.
+6. "haftaya pazartesi" = Bir sonraki haftanin pazartesi gunu.
+7. "cuma gunu" gibi gun adlari = en yakin gelecek o gun; eger bugun ayni gunse bugun.
+8. "sabah" = 09:00, "oglen" = 12:00, "aksam" = 19:00, "gece" = 22:00.
+9. "sabah", "oglen", "aksam" veya "gece" tek basina gelirse tarih belirsizdir. Tarih uydurma; dueDate/startDate null olsun ve missingFields veya clarification alaninda tarih istendigini belirt.
+10. Kullanici net saat verirse onu kullan. Ornek: "saat 10'da" = 10:00, "18:30'da" = 18:30.
+11. Tarih/saat ISO 8601 olarak don. Saatli degerlerde mutlaka +03:00 offseti kullan: YYYY-MM-DDTHH:mm:ss+03:00.
+12. Tarih varsa ama saat yoksa YYYY-MM-DD formatinda donebilirsin; backend bunu Europe/Istanbul gece yarisi olarak normalize edecek.
+
+Kullanicinin girdigi metnin bir 'task' (gorev/yapilacak is), 'note' (not/bilgi/fikir) veya 'event' (etkinlik/randevu/toplanti) oldugunu analiz et.
+
+KATEGORILESTIRME:
+Metin icerigine gore su kategorilerden birini sec: "Genel", "Is", "Kisisel", "Egitim", "Saglik", "Alisveris".
+Orn: "Ekmek", "Market", "Yemek" -> "Alisveris"; "Rapor", "Toplanti" -> "Is"; "Ders", "Kitap" -> "Egitim".
+
+SADECE "application/json" formatinda yanit ver. Markdown veya ek metin ekleme. JSON yapisi tam olarak soyle olmalidir:
+
+{
+  "type": "task" | "note" | "event",
+  "title": "Ana eylem veya konu ozeti",
+  "description": "Metinde varsa ekstra detaylar, yoksa bos string",
+  "priority": "low" | "normal" | "high" | "urgent",
+  "category": "Genel" | "Is" | "Kisisel" | "Egitim" | "Saglik" | "Alisveris",
+  "dueDate": "ISO 8601 formatinda tarih veya null (Sadece 'task' ise)",
+  "startDate": "ISO 8601 formatinda tarih veya null (Sadece 'event' ise. 'task' ve 'note' tiplerinde null olmalidir)",
+  "missingFields": ["date"] | [],
+  "clarification": "Tarih belirsizse kisa netlestirme sorusu veya null"
+}`,
+    ["currentDate", "todayDate", "todayWeekday", "timezoneName", "timezoneOffset"]
 );
 
 // --- 2. LLMOps Logging ---
@@ -194,9 +249,113 @@ function fallbackParseNaturalLanguage(text, referenceDate = null, reason = null)
     };
 }
 
+function fallbackParseNaturalLanguageV2(text, referenceDate = null, reason = null) {
+    const now = referenceDate ? new Date(referenceDate) : new Date();
+    const lower = normalizeTurkishText(text);
+    const dateResolution = resolveTurkishDateTime(text, now);
+    const parsedDate = dateResolution.hasDate ? dateResolution.iso : null;
+    const isEvent = /(randevu|toplanti|etkinlik|gorusme|rezervasyon|ders|doktor)/i.test(lower);
+    const isNote = /(not|fikir|bilgi|kaydet)/i.test(lower) && !parsedDate;
+    const category = /(doktor|saglik|hastane)/i.test(lower)
+        ? "Sağlık"
+        : /(market|alisveris|ekmek|sut)/i.test(lower)
+            ? "Alışveriş"
+            : /(toplanti|rapor|is|proje|staj)/i.test(lower)
+                ? "İş"
+                : /(ders|sunum|okul|sinav|odev)/i.test(lower)
+                    ? "Eğitim"
+                    : "Genel";
+    const requiresClarification = Boolean(dateResolution.clarification || (isEvent && !parsedDate));
+
+    return {
+        type: isEvent ? "event" : isNote ? "note" : "task",
+        title: text,
+        description: "",
+        priority: /(acil|urgent|onemli)/i.test(lower) ? "urgent" : "normal",
+        category,
+        dueDate: !isEvent && !isNote ? parsedDate : null,
+        startDate: isEvent ? parsedDate : null,
+        missingFields: requiresClarification ? ["date"] : [],
+        clarification: requiresClarification
+            ? (dateResolution.clarification || "Etkinlik tarihi belirsiz. Lutfen tarih ve saat belirtin.")
+            : null,
+        requiresClarification,
+        fallback: true,
+        fallbackReason: reason?.message || reason || "Gemini unavailable",
+    };
+}
+
+function normalizeParsedCategory(category) {
+    const lower = normalizeTurkishText(category || "");
+    if (lower === "is") return "İş";
+    if (lower === "kisisel") return "Kişisel";
+    if (lower === "egitim") return "Eğitim";
+    if (lower === "saglik") return "Sağlık";
+    if (lower === "alisveris") return "Alışveriş";
+    return category || "Genel";
+}
+
+function buildValidatedParseResult(parsedData, text, referenceDate) {
+    const type = ["task", "event", "note"].includes(parsedData.type) ? parsedData.type : "task";
+    const dateResolution = resolveTurkishDateTime(text, referenceDate);
+    let dueDate = normalizeTurkeyIsoDate(parsedData.dueDate);
+    let startDate = normalizeTurkeyIsoDate(parsedData.startDate);
+
+    if ((parsedData.dueDate && !dueDate) || (parsedData.startDate && !startDate)) {
+        throw new Error("Gemini gecersiz veya Europe/Istanbul disi tarih dondurdu.");
+    }
+
+    if (dateResolution.hasDate) {
+        if (type === "event") {
+            startDate = dateResolution.iso;
+            dueDate = null;
+        } else if (type === "task") {
+            dueDate = dateResolution.iso;
+            startDate = null;
+        } else {
+            dueDate = null;
+            startDate = null;
+        }
+    }
+
+    const missingFields = Array.isArray(parsedData.missingFields)
+        ? parsedData.missingFields.filter(Boolean)
+        : [];
+    let clarification = parsedData.clarification || null;
+    let requiresClarification = Boolean(parsedData.requiresClarification);
+
+    if (dateResolution.clarification) {
+        dueDate = null;
+        startDate = null;
+        requiresClarification = true;
+        if (!missingFields.includes("date")) missingFields.push("date");
+        clarification = dateResolution.clarification;
+    }
+
+    if (type === "event" && !startDate) {
+        requiresClarification = true;
+        if (!missingFields.includes("date")) missingFields.push("date");
+        clarification = clarification || "Etkinlik tarihi belirsiz. Lutfen tarih ve saat belirtin.";
+    }
+
+    return {
+        type,
+        title: parsedData.title || text,
+        description: parsedData.description || "",
+        priority: parsedData.priority || "normal",
+        category: normalizeParsedCategory(parsedData.category),
+        dueDate,
+        startDate,
+        missingFields,
+        clarification,
+        requiresClarification,
+        timeZone: TURKEY_TIME_ZONE,
+    };
+}
+
 export async function parseNaturalLanguage(text, referenceDate = null) {
     if (!genAI) {
-        return fallbackParseNaturalLanguage(text, referenceDate, "Missing GEMINI_API_KEY");
+        return fallbackParseNaturalLanguageV2(text, referenceDate, "Missing GEMINI_API_KEY");
     }
 
     if (!genAI) {
@@ -205,23 +364,17 @@ export async function parseNaturalLanguage(text, referenceDate = null) {
 
     const model = getGeminiModel();
     
-    // Zaman dilimi ve referans tarihi hesaplama
     const now = referenceDate ? new Date(referenceDate) : new Date();
-    const offsetMinutes = -now.getTimezoneOffset();
-    const absOffsetMinutes = Math.abs(offsetMinutes);
-    const offsetSign = offsetMinutes >= 0 ? "+" : "-";
-    const offsetHH = String(Math.floor(absOffsetMinutes / 60)).padStart(2, '0');
-    const offsetMM = String(absOffsetMinutes % 60).padStart(2, '0');
-    const timezone = `${offsetSign}${offsetHH}:${offsetMM}`;
-
-    const pad = (n) => String(n).padStart(2, '0');
-    const currentDateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}${timezone}`;
+    const turkeyContext = getTurkeyDateContext(now);
     
     const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
     
     const systemInstruction = PARSE_INSTRUCTION_TEMPLATE.format({ 
-        currentDate: currentDateStr,
-        timezone: timezone
+        currentDate: turkeyContext.isoDateTime,
+        todayDate: turkeyContext.isoDate,
+        todayWeekday: turkeyContext.weekday,
+        timezoneName: TURKEY_TIME_ZONE,
+        timezoneOffset: TURKEY_OFFSET,
     });
 
     LLMLogger.logRequest(requestId, text);
@@ -260,6 +413,7 @@ export async function parseNaturalLanguage(text, referenceDate = null) {
         let parsedData;
         try {
             parsedData = JSON.parse(jsonStr);
+            return buildValidatedParseResult(parsedData, text, now);
         } catch (parseError) {
             throw new Error(`JSON ayrıştırma hatası: ${parseError.message}. Gelen yanıt: ${jsonStr}`);
         }
@@ -288,7 +442,7 @@ export async function parseNaturalLanguage(text, referenceDate = null) {
     } catch (error) {
         const durationMs = Math.round(performance.now() - startTime);
         LLMLogger.logResponse(requestId, durationMs, null, false, error);
-        return fallbackParseNaturalLanguage(text, referenceDate, error);
+        return fallbackParseNaturalLanguageV2(text, referenceDate, error);
         
         // Hata durumunda eskisi gibi dummy bir object FAKAT dönmek yerine
         // Hatayı yukarı fırlatarak (throw) API'nin bunu düzgün 500 dönmesini sağlıyoruz.

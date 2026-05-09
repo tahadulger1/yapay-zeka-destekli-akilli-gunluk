@@ -70,6 +70,13 @@ export default function AIInputBar({ onTaskCreated }) {
 
       if (!response.ok) throw new Error(data.error || 'API hatasi');
 
+      if (data.result?.requiresClarification) {
+        const message = data.result.clarification || 'Tarih/saat bilgisini netlestirin.';
+        addToast(message, 'warning');
+        speak(message, lang);
+        return;
+      }
+
       const type = data.result.type;
       const toastKey = type === 'note' ? 'toast.noteCreated' : type === 'event' ? 'toast.eventCreated' : 'toast.taskCreated';
       const speechKey = type === 'note' ? 'speech.noteCreated' : type === 'event' ? 'speech.eventCreated' : 'speech.taskCreated';

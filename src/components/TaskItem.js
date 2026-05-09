@@ -1,6 +1,7 @@
 "use client";
 import { useLanguage } from '@/context/LanguageContext';
 import { IconClock, IconTrash } from '@/components/Icons';
+import { formatDate, formatDateTime, formatTime } from '@/lib/utils';
 
 const priorityBadgeMap = {
   low: 'badge-priority-low', normal: 'badge-priority-normal',
@@ -20,7 +21,9 @@ export default function TaskItem({ task, onToggle, onDelete, showActions = true 
   const { t } = useLanguage();
   const isCompleted = task.status === 'completed';
   const priorityKey = `priority.${task.priority}`;
-  const dueDate = task.dueDate ? new Date(task.dueDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) : null;
+  const dueDate = task.dueDate
+    ? (formatTime(task.dueDate) === '00:00' ? formatDate(task.dueDate) : formatDateTime(task.dueDate))
+    : null;
 
   return (
     <div className={`task-item ${isCompleted ? 'completed' : ''}`} role="listitem">

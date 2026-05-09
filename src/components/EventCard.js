@@ -1,6 +1,5 @@
 import { IconClock, IconMapPin, IconEdit, IconTrash } from '@/components/Icons';
-
-const months = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+import { formatDate, formatTime } from '@/lib/utils';
 
 const categoryBadgeMap = {
   'Alışveriş': 'badge-success',
@@ -12,10 +11,8 @@ const categoryBadgeMap = {
 };
 
 export default function EventCard({ event, onEdit, onDelete }) {
-  const date = new Date(event.startDate);
-  const day = date.getDate();
-  const month = months[date.getMonth()];
-  const time = date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  const [day, month, year] = formatDate(event.startDate).split('.');
+  const time = formatTime(event.startDate);
 
   return (
     <article 
@@ -26,7 +23,7 @@ export default function EventCard({ event, onEdit, onDelete }) {
     >
       <div className="event-date-block">
         <span className="event-date-day" suppressHydrationWarning>{day}</span>
-        <span className="event-date-month" suppressHydrationWarning>{month}</span>
+        <span className="event-date-month" suppressHydrationWarning>{`${month}.${year}`}</span>
       </div>
       <div className="event-info">
         <h4 className="event-title">{event.title}</h4>

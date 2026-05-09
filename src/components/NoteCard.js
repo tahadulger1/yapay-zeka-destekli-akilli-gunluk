@@ -1,9 +1,8 @@
 import { IconEdit, IconTrash } from '@/components/Icons';
+import { formatDate } from '@/lib/utils';
 
 export default function NoteCard({ note, onEdit, onDelete }) {
-  const date = new Date(note.createdAt).toLocaleDateString('tr-TR', {
-    day: 'numeric', month: 'short',
-  });
+  const date = formatDate(note.createdAt);
 
   return (
     <article 
